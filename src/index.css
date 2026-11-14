@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Cormorant Garamond", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --color-warm-ivory: #FAF6F0;
+  --color-crisp-cream: #FFFFFF;
+  --color-studio-cream: #F5EFE6;
+  --color-warm-sand: #E8DFD1;
+  --color-espresso: #2C221E;
+  --color-cocoa: #6E5D54;
+  --color-champagne-gold: #C8963E;
+  --color-honey-gold: #E0AF50;
+  --color-blush-peach: #F4E4D8;
+}
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+  
+@media (max-width: 640px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  html, body, #root {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+    min-height: 100dvh;
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    font-family: var(--font-sans);
+    background-color: #FAF6F0;
+    color: #2C221E;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-serif);
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom Warm Ivory & Champagne Gold scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FAF6F0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D8CBB8;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #C8963E;
+}
+
+@keyframes oura-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.oura-shimmer {
+  background: linear-gradient(
+    90deg,
+    #F5EFE6 0%,
+    #EDE4D6 45%,
+    #FFFFFF 50%,
+    #EDE4D6 55%,
+    #F5EFE6 100%
+  );
+  background-size: 200% 100%;
+  animation: oura-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .oura-shimmer {
+    animation: none;
+  }
+}

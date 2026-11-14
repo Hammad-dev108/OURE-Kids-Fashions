@@ -1,0 +1,8 @@
+{
+  "name": "OURA Fashion Kid's",
+  "description": "Luxury organic and festive children's fashion boutique for ages 0 to 10 years, featuring interactive Three.js 3D garment showcases.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
