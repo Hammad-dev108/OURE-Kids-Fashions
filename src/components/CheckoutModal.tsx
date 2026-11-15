@@ -53,6 +53,7 @@ export function CheckoutModal() {
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvc, setCardCvc] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
 
   if (!checkoutOpen) return null;
@@ -92,8 +93,9 @@ export function CheckoutModal() {
     return `${digits.slice(0, 2)}/${digits.slice(2)}`;
   };
 
-  const handleConfirmOrder = (e: React.FormEvent) => {
+  const handleConfirmOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     if (paymentMethod === 'card') {
       const rawDigits = cardNumber.replace(/\s/g, '');
       if (
@@ -107,6 +109,7 @@ export function CheckoutModal() {
       }
     }
 
+    setSubmitting(true);
     const orderNum = `OURA-${Math.floor(1000 + Math.random() * 9000)}`;
     const newReceipt: OrderReceipt = {
       orderNumber: orderNum,
@@ -142,10 +145,14 @@ export function CheckoutModal() {
       estimatedDelivery: '2–4 Business Days',
     };
 
-    recordOrder(newReceipt);
-    setReceipt(newReceipt);
-    setErrorMsg('');
-    setStep('confirmation');
+    try {
+      await recordOrder(newReceipt);
+      setReceipt(newReceipt);
+      setErrorMsg('');
+      setStep('confirmation');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -474,11 +481,14 @@ export function CheckoutModal() {
 
                 <button
                   type="submit"
-                  className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg bg-[#C8963E] px-6 py-3 text-sm font-semibold text-[#FFFFFF] transition-colors hover:bg-[#E0AF50] hover:text-[#2C221E]"
+                  disabled={submitting}
+                  className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg bg-[#C8963E] px-6 py-3 text-sm font-semibold text-[#FFFFFF] transition-colors hover:bg-[#E0AF50] hover:text-[#2C221E] disabled:opacity-60"
                 >
                   <ShieldCheck className="h-4 w-4" />
                   <span>
-                    Confirm Order ({formatPrice(totalPkr, currency)})
+                    {submitting
+                      ? 'Placing Order...'
+                      : `Confirm Order (${formatPrice(totalPkr, currency)})`}
                   </span>
                 </button>
               </div>

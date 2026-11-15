@@ -1,32 +1,61 @@
 import { useState } from 'react';
-import { Eye, EyeOff, Lock, ShieldCheck, X } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, ShieldCheck, X } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
 export function AdminLoginModal() {
-  const { adminLoginOpen, closeAdminLogin, authenticateAdmin } = useStore();
+  const {
+    supabaseEnabled,
+    adminLoginOpen,
+    closeAdminLogin,
+    authenticateAdmin,
+  } = useStore();
+
+  const [email, setEmail] = useState('');
   const [credential, setCredential] = useState('');
   const [showSecret, setShowSecret] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   if (!adminLoginOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
+
+    if (supabaseEnabled && !email.trim()) {
+      setError('Please enter your admin email.');
+      return;
+    }
     if (!credential.trim()) {
-      setError('Please enter your Admin PIN or password.');
+      setError(
+        supabaseEnabled
+          ? 'Please enter your admin password.'
+          : 'Please enter your Admin PIN or password.'
+      );
       return;
     }
-    const ok = authenticateAdmin(credential);
-    if (!ok) {
-      setError('Incorrect PIN or password. Please try again.');
-      return;
-    }
-    setCredential('');
+
+    setSubmitting(true);
     setError('');
-    setShowSecret(false);
+    try {
+      const res = await authenticateAdmin({
+        email: supabaseEnabled ? email.trim() : undefined,
+        password: credential,
+      });
+      if (!res.ok) {
+        setError(res.error ?? 'Authentication failed. Please try again.');
+        return;
+      }
+      setEmail('');
+      setCredential('');
+      setShowSecret(false);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleClose = () => {
+    setEmail('');
     setCredential('');
     setError('');
     setShowSecret(false);
@@ -72,12 +101,39 @@ export function AdminLoginModal() {
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="space-y-4 p-6">
+          {supabaseEnabled && (
+            <div>
+              <label
+                htmlFor="admin-email"
+                className="mb-1.5 block text-xs font-medium text-[#6E5D54]"
+              >
+                Admin Email
+              </label>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[#6E5D54]" />
+                <input
+                  id="admin-email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (error) setError('');
+                  }}
+                  autoFocus
+                  placeholder="admin@ourakids.com"
+                  className="w-full min-w-0 rounded-lg border border-[#E8DFD1] bg-[#FAF6F0] py-2.5 pr-3.5 pl-10 text-base sm:text-sm text-[#2C221E] placeholder:text-[#6E5D54]/55 focus:border-[#C8963E] focus:outline-none"
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label
               htmlFor="admin-credential"
               className="mb-1.5 block text-xs font-medium text-[#6E5D54]"
             >
-              Admin PIN or Password
+              {supabaseEnabled ? 'Admin Password' : 'Admin PIN or Password'}
             </label>
             <div className="relative">
               <input
@@ -88,8 +144,12 @@ export function AdminLoginModal() {
                   setCredential(e.target.value);
                   if (error) setError('');
                 }}
-                autoFocus
-                placeholder="Enter admin PIN or password"
+                autoFocus={!supabaseEnabled}
+                placeholder={
+                  supabaseEnabled
+                    ? 'Enter your Supabase admin password'
+                    : 'Enter admin PIN or password'
+                }
                 className="w-full min-w-0 rounded-lg border border-[#E8DFD1] bg-[#FAF6F0] py-2.5 pr-10 pl-3.5 text-base sm:text-sm text-[#2C221E] placeholder:text-[#6E5D54]/55 focus:border-[#C8963E] focus:outline-none"
               />
               <button
@@ -123,10 +183,11 @@ export function AdminLoginModal() {
             </button>
             <button
               type="submit"
-              className="inline-flex items-center gap-2 rounded-lg bg-[#C8963E] px-5 py-2.5 text-xs font-semibold text-[#FFFFFF] transition-colors hover:bg-[#E0AF50] hover:text-[#2C221E]"
+              disabled={submitting}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#C8963E] px-5 py-2.5 text-xs font-semibold text-[#FFFFFF] transition-colors hover:bg-[#E0AF50] hover:text-[#2C221E] disabled:opacity-60"
             >
               <ShieldCheck className="h-4 w-4" />
-              <span>Unlock Dashboard</span>
+              <span>{submitting ? 'Verifying...' : 'Unlock Dashboard'}</span>
             </button>
           </div>
           <div className="h-24 sm:h-8 shrink-0" aria-hidden="true" />

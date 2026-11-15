@@ -51,6 +51,8 @@ function getStatusBadgeClasses(status: OrderStatus): string {
 
 export function AdminDashboardModal() {
   const {
+    dbSyncError,
+    adminEmail,
     adminDashboardOpen,
     closeAdminDashboard,
     logoutAdmin,
@@ -158,16 +160,16 @@ export function AdminDashboardModal() {
 
   const handleSaveProduct = (product: Product) => {
     if (editingProduct) {
-      updateProduct(editingProduct.id, product);
+      void updateProduct(editingProduct.id, product);
     } else {
-      addProduct(product);
+      void addProduct(product);
     }
   };
 
   const handleToggleStock = (product: Product) => {
     const next: StockStatus =
       product.stockStatus === 'sold-out' ? 'in-stock' : 'sold-out';
-    setProductStockStatus(product.id, next);
+    void setProductStockStatus(product.id, next);
   };
 
   const handleCreatePromo = (e: React.FormEvent) => {
@@ -209,7 +211,9 @@ export function AdminDashboardModal() {
                 OURA Atelier Admin
               </h1>
               <p className="hidden text-[11px] text-[#6E5D54] sm:block">
-                Catalog, Orders &amp; Boutique Promotions · Live Browser Persistence
+                {adminEmail
+                  ? `Signed in as ${adminEmail}`
+                  : 'Catalog, Orders & Boutique Promotions'}
               </p>
             </div>
           </div>
@@ -247,7 +251,7 @@ export function AdminDashboardModal() {
 
             <button
               type="button"
-              onClick={logoutAdmin}
+              onClick={() => void logoutAdmin()}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#E8DFD1] bg-[#FAF6F0] px-3.5 py-2 text-xs font-semibold text-[#2C221E] transition-colors hover:border-[#C8963E] hover:bg-[#F4E4D8]"
             >
               <LogOut className="h-3.5 w-3.5 text-[#C8963E]" />
@@ -259,6 +263,11 @@ export function AdminDashboardModal() {
 
       {/* Main Scrollable Dashboard Content */}
       <div className="mx-auto max-w-7xl space-y-7 px-4 py-7 sm:px-6 lg:px-8">
+          {dbSyncError && (
+            <div className="rounded-xl border border-[#C8963E] bg-[#F4E4D8] px-4 py-2.5 text-xs font-medium text-[#2C221E]">
+              {dbSyncError}
+            </div>
+          )}
           {/* 1. KPI Summary Cards */}
           <section aria-label="Store Key Performance Indicators">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

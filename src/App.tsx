@@ -435,7 +435,7 @@ function BoutiqueStorefront() {
               onClick={() => setOrdersOpen(true)}
               className="hover:text-[#2C221E]"
             >
-              Order Receipts ({orders.length})
+              Track Order ({orders.length})
             </button>
             <button
               type="button"

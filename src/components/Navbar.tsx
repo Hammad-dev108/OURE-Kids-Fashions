@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Heart, Menu, Search, ShoppingBag, X } from 'lucide-react';
+import { Heart, Menu, PackageSearch, Search, ShoppingBag, X } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
 export type NavPreset =
@@ -36,6 +36,7 @@ export function Navbar({
     totalCartCount,
     wishlist,
     setCartOpen,
+    setOrdersOpen,
     openAdminEntry,
   } = useStore();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -63,7 +64,7 @@ export function Navbar({
   return (
     <header className="sticky top-0 z-40 border-b border-[#E8DFD1] bg-[#FAF6F0]/95">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 sm:gap-4 px-3 sm:px-6 lg:px-8">
-        {/* Zone 1: Brand Wordmark */}
+        {/* Zone 1: Brand Wordmark (5-tap secret Admin trigger) */}
         <a
           href="#top"
           onClick={handleLogoTap}
@@ -89,7 +90,7 @@ export function Navbar({
           ))}
         </nav>
 
-        {/* Zone 3: Search, Wishlist, Admin & Cart Actions */}
+        {/* Zone 3: Search, Track Order, Wishlist & Cart Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           {searchOpen ? (
             <div className="flex items-center rounded-lg border border-[#E8DFD1] bg-[#FFFFFF] px-2.5 py-1 shadow-xs">
@@ -125,6 +126,16 @@ export function Navbar({
               <Search className="h-4.5 w-4.5" />
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => setOrdersOpen(true)}
+            aria-label="Track order"
+            className="hidden sm:inline-flex h-10 items-center gap-1.5 rounded-lg border border-[#E8DFD1] bg-[#FFFFFF] px-3 text-xs font-medium text-[#2C221E] whitespace-nowrap shrink-0 transition-colors hover:border-[#C8963E] hover:bg-[#F4E4D8]/60"
+          >
+            <PackageSearch className="h-4 w-4 text-[#C8963E]" />
+            <span>Track Order</span>
+          </button>
 
           <button
             type="button"
@@ -186,6 +197,17 @@ export function Navbar({
                 <span>{item.label}</span>
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                setOrdersOpen(true);
+              }}
+              className="mt-1 flex items-center gap-2 rounded-lg border-t border-[#E8DFD1] px-3 pt-3 pb-2 text-left text-sm font-semibold text-[#C8963E] hover:bg-[#F4E4D8]/60"
+            >
+              <PackageSearch className="h-4 w-4" />
+              <span>Track Order</span>
+            </button>
           </nav>
         </div>
       )}

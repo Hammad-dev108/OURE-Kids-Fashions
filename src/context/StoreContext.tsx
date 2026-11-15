@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   DEFAULT_PROMO_RULES,
   DEMO_ORDERS,
@@ -7,6 +7,14 @@ import {
   PRODUCTS,
   STANDARD_DELIVERY_FEE_PKR,
 } from '../data/products';
+import {
+  isSupabaseConfigured,
+  orderToSupabaseRow,
+  productToSupabaseRow,
+  supabase,
+  supabaseRowToOrder,
+  supabaseRowToProduct,
+} from '../lib/supabase';
 import type {
   CartItem,
   Currency,
@@ -113,6 +121,7 @@ function loadInitialState(): PersistedState {
 }
 
 function loadAdminSession(): boolean {
+  if (isSupabaseConfigured) return false;
   try {
     return window.sessionStorage.getItem(ADMIN_SESSION_KEY) === 'true';
   } catch {
@@ -120,14 +129,23 @@ function loadAdminSession(): boolean {
   }
 }
 
+export interface AdminAuthCredentials {
+  email?: string;
+  password: string;
+}
+
 interface StoreContextValue {
+  supabaseEnabled: boolean;
+  productsLoading: boolean;
+  dbSyncError: string | null;
   currency: Currency;
   setCurrency: (c: Currency) => void;
   products: Product[];
-  addProduct: (product: Product) => void;
-  updateProduct: (productId: string, updated: Product) => void;
-  deleteProduct: (productId: string) => void;
-  setProductStockStatus: (productId: string, status: StockStatus) => void;
+  addProduct: (product: Product) => Promise<void>;
+  updateProduct: (productId: string, updated: Product) => Promise<void>;
+  deleteProduct: (productId: string) => Promise<void>;
+  setProductStockStatus: (productId: string, status: StockStatus) => Promise<void>;
+  refreshRemoteData: () => Promise<void>;
   cart: CartItem[];
   wishlist: string[];
   giftWrap: boolean;
@@ -152,8 +170,9 @@ interface StoreContextValue {
   shippingPkr: number;
   totalPkr: number;
   orders: OrderReceipt[];
-  recordOrder: (receipt: OrderReceipt) => void;
-  updateOrderStatus: (orderNumber: string, status: OrderStatus) => void;
+  recordOrder: (receipt: OrderReceipt) => Promise<{ ok: boolean; error?: string }>;
+  updateOrderStatus: (orderNumber: string, status: OrderStatus) => Promise<void>;
+  trackOrderByNumber: (orderNumber: string) => Promise<OrderReceipt | null>;
   cartOpen: boolean;
   setCartOpen: (open: boolean) => void;
   checkoutOpen: boolean;
@@ -162,19 +181,24 @@ interface StoreContextValue {
   setOrdersOpen: (open: boolean) => void;
   getProductById: (id: string) => Product | undefined;
   adminAuthenticated: boolean;
+  adminEmail: string | null;
   adminLoginOpen: boolean;
   adminDashboardOpen: boolean;
   openAdminEntry: () => void;
   closeAdminLogin: () => void;
   closeAdminDashboard: () => void;
-  authenticateAdmin: (credential: string) => boolean;
-  logoutAdmin: () => void;
+  authenticateAdmin: (
+    credentials: AdminAuthCredentials
+  ) => Promise<{ ok: boolean; error?: string }>;
+  logoutAdmin: () => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextValue | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<PersistedState>(loadInitialState);
+  const [productsLoading, setProductsLoading] = useState<boolean>(isSupabaseConfigured);
+  const [dbSyncError, setDbSyncError] = useState<string | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
@@ -182,9 +206,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [adminAuthenticated, setAdminAuthenticated] = useState<boolean>(
     loadAdminSession
   );
+  const [adminEmail, setAdminEmail] = useState<string | null>(null);
   const [adminLoginOpen, setAdminLoginOpen] = useState(false);
   const [adminDashboardOpen, setAdminDashboardOpen] = useState(false);
 
+  // Persist shopper preferences & fallback cache to localStorage
   useEffect(() => {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -192,6 +218,115 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       // Ignore storage quota errors gracefully
     }
   }, [state]);
+
+  const fetchRemoteProducts = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) {
+      setProductsLoading(false);
+      return;
+    }
+
+    setProductsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('id', { ascending: true });
+
+      if (error) {
+        setDbSyncError(`Products sync fallback active (${error.message})`);
+        setProductsLoading(false);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const mapped = data.map((row) =>
+          normalizeProduct(supabaseRowToProduct(row as Record<string, unknown>))
+        );
+        setState((prev) => ({ ...prev, products: mapped }));
+        setDbSyncError(null);
+      } else {
+        // Attempt auto-seed when products table is empty; display PRODUCTS either way
+        const seedRows = PRODUCTS.map(productToSupabaseRow);
+        const { error: seedErr } = await supabase
+          .from('products')
+          .upsert(seedRows, { onConflict: 'id' });
+
+        if (!seedErr) {
+          setState((prev) => ({ ...prev, products: PRODUCTS }));
+          setDbSyncError(null);
+        } else {
+          // If RLS prevents anonymous insert, display default catalog cleanly
+          setState((prev) => ({
+            ...prev,
+            products: prev.products.length > 0 ? prev.products : PRODUCTS,
+          }));
+        }
+      }
+    } catch {
+      setDbSyncError('Unable to reach Supabase right now. Showing local catalog.');
+    } finally {
+      setProductsLoading(false);
+    }
+  }, []);
+
+  const fetchRemoteOrders = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        const mapped = data.map((row) =>
+          normalizeOrder(supabaseRowToOrder(row as Record<string, unknown>))
+        );
+        setState((prev) => ({
+          ...prev,
+          orders: mapped.length > 0 ? mapped : prev.orders,
+        }));
+      }
+    } catch {
+      // Keep local orders fallback silently
+    }
+  }, []);
+
+  const refreshRemoteData = useCallback(async () => {
+    await Promise.all([fetchRemoteProducts(), fetchRemoteOrders()]);
+  }, [fetchRemoteProducts, fetchRemoteOrders]);
+
+  // Initial Supabase hydration + Auth state listener
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) {
+      setProductsLoading(false);
+      return;
+    }
+
+    void refreshRemoteData();
+
+    void supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user) {
+        setAdminAuthenticated(true);
+        setAdminEmail(data.session.user.email ?? null);
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (session?.user) {
+          setAdminAuthenticated(true);
+          setAdminEmail(session.user.email ?? null);
+        } else {
+          setAdminAuthenticated(false);
+          setAdminEmail(null);
+        }
+      }
+    );
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, [refreshRemoteData]);
 
   const getProductById = (id: string) =>
     state.products.find((p) => p.id === id);
@@ -204,38 +339,85 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setState((prev) => ({ ...prev, giftWrap }));
   };
 
-  const addProduct = (product: Product) => {
+  const addProduct = async (product: Product) => {
+    const normalized = normalizeProduct(product);
     setState((prev) => ({
       ...prev,
-      products: [normalizeProduct(product), ...prev.products],
+      products: [normalized, ...prev.products],
     }));
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase
+        .from('products')
+        .insert(productToSupabaseRow(normalized));
+      if (error) {
+        setDbSyncError(`Product saved locally, DB sync failed: ${error.message}`);
+      } else {
+        setDbSyncError(null);
+      }
+    }
   };
 
-  const updateProduct = (productId: string, updated: Product) => {
+  const updateProduct = async (productId: string, updated: Product) => {
+    const normalized = normalizeProduct(updated);
     setState((prev) => ({
       ...prev,
-      products: prev.products.map((p) =>
-        p.id === productId ? normalizeProduct(updated) : p
-      ),
+      products: prev.products.map((p) => (p.id === productId ? normalized : p)),
     }));
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase
+        .from('products')
+        .update(productToSupabaseRow(normalized))
+        .eq('id', productId);
+      if (error) {
+        setDbSyncError(`Product updated locally, DB sync failed: ${error.message}`);
+      } else {
+        setDbSyncError(null);
+      }
+    }
   };
 
-  const deleteProduct = (productId: string) => {
+  const deleteProduct = async (productId: string) => {
     setState((prev) => ({
       ...prev,
       products: prev.products.filter((p) => p.id !== productId),
       cart: prev.cart.filter((c) => c.productId !== productId),
       wishlist: prev.wishlist.filter((id) => id !== productId),
     }));
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId);
+      if (error) {
+        setDbSyncError(`Product removed locally, DB sync failed: ${error.message}`);
+      } else {
+        setDbSyncError(null);
+      }
+    }
   };
 
-  const setProductStockStatus = (productId: string, status: StockStatus) => {
+  const setProductStockStatus = async (productId: string, status: StockStatus) => {
     setState((prev) => ({
       ...prev,
       products: prev.products.map((p) =>
         p.id === productId ? { ...p, stockStatus: status } : p
       ),
     }));
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase
+        .from('products')
+        .update({ stock_status: status })
+        .eq('id', productId);
+      if (error) {
+        setDbSyncError(`Stock updated locally, DB sync failed: ${error.message}`);
+      } else {
+        setDbSyncError(null);
+      }
+    }
   };
 
   const togglePromoRule = (code: string) => {
@@ -279,7 +461,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           code: cleanCode,
           discountPercent: Math.round(rule.discountPercent),
           enabled: rule.enabled,
-          description: rule.description?.trim() || `${Math.round(rule.discountPercent)}% Boutique Offer`,
+          description:
+            rule.description?.trim() ||
+            `${Math.round(rule.discountPercent)}% Boutique Offer`,
         },
         ...prev.promoRules,
       ],
@@ -397,23 +581,78 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const isWishlisted = (productId: string) => state.wishlist.includes(productId);
 
-  const recordOrder = (receipt: OrderReceipt) => {
+  const recordOrder = async (
+    receipt: OrderReceipt
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const normalized = normalizeOrder(receipt);
     setState((prev) => ({
       ...prev,
-      orders: [normalizeOrder(receipt), ...prev.orders],
+      orders: [normalized, ...prev.orders],
       cart: [],
       giftWrap: false,
       promoCode: null,
     }));
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase
+        .from('orders')
+        .insert(orderToSupabaseRow(normalized));
+      if (error) {
+        return { ok: false, error: error.message };
+      }
+    }
+    return { ok: true };
   };
 
-  const updateOrderStatus = (orderNumber: string, status: OrderStatus) => {
+  const updateOrderStatus = async (orderNumber: string, status: OrderStatus) => {
     setState((prev) => ({
       ...prev,
       orders: prev.orders.map((order) =>
         order.orderNumber === orderNumber ? { ...order, status } : order
       ),
     }));
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status })
+        .eq('order_number', orderNumber);
+      if (error) {
+        setDbSyncError(`Order status updated locally, DB sync failed: ${error.message}`);
+      } else {
+        setDbSyncError(null);
+      }
+    }
+  };
+
+  const trackOrderByNumber = async (
+    orderNumber: string
+  ): Promise<OrderReceipt | null> => {
+    const normalized = orderNumber.trim().toUpperCase();
+    if (!normalized) return null;
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .ilike('order_number', normalized)
+          .maybeSingle();
+
+        if (!error && data) {
+          return normalizeOrder(
+            supabaseRowToOrder(data as Record<string, unknown>)
+          );
+        }
+      } catch {
+        // Fall through to local order lookup
+      }
+    }
+
+    const localMatch = state.orders.find(
+      (o) => o.orderNumber.toUpperCase() === normalized
+    );
+    return localMatch ?? null;
   };
 
   const openAdminEntry = () => {
@@ -432,8 +671,38 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setAdminDashboardOpen(false);
   };
 
-  const authenticateAdmin = (credential: string): boolean => {
-    const trimmed = credential.trim();
+  const authenticateAdmin = async ({
+    email,
+    password,
+  }: AdminAuthCredentials): Promise<{ ok: boolean; error?: string }> => {
+    if (isSupabaseConfigured && supabase) {
+      const cleanEmail = email?.trim() ?? '';
+      if (!cleanEmail || !password) {
+        return {
+          ok: false,
+          error: 'Please enter your admin email and password.',
+        };
+      }
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+      if (error || !data.session) {
+        return {
+          ok: false,
+          error: error?.message || 'Invalid admin email or password.',
+        };
+      }
+      setAdminAuthenticated(true);
+      setAdminEmail(data.user?.email ?? cleanEmail);
+      setAdminLoginOpen(false);
+      setAdminDashboardOpen(true);
+      void refreshRemoteData();
+      return { ok: true };
+    }
+
+    // Fallback PIN / Password access when Supabase env vars are not configured
+    const trimmed = password.trim();
     if (trimmed === '1234' || trimmed === 'ouraadmin') {
       setAdminAuthenticated(true);
       try {
@@ -443,13 +712,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
       setAdminLoginOpen(false);
       setAdminDashboardOpen(true);
-      return true;
+      return { ok: true };
     }
-    return false;
+    return {
+      ok: false,
+      error: 'Incorrect PIN or password. Please try again.',
+    };
   };
 
-  const logoutAdmin = () => {
+  const logoutAdmin = async () => {
+    if (isSupabaseConfigured && supabase) {
+      await supabase.auth.signOut();
+    }
     setAdminAuthenticated(false);
+    setAdminEmail(null);
     setAdminDashboardOpen(false);
     try {
       window.sessionStorage.removeItem(ADMIN_SESSION_KEY);
@@ -501,6 +777,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   return (
     <StoreContext.Provider
       value={{
+        supabaseEnabled: isSupabaseConfigured,
+        productsLoading,
+        dbSyncError,
         currency: state.currency,
         setCurrency,
         products: state.products,
@@ -508,6 +787,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         updateProduct,
         deleteProduct,
         setProductStockStatus,
+        refreshRemoteData,
         cart: state.cart,
         wishlist: state.wishlist,
         giftWrap: state.giftWrap,
@@ -528,6 +808,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         orders: state.orders,
         recordOrder,
         updateOrderStatus,
+        trackOrderByNumber,
         cartOpen,
         setCartOpen,
         checkoutOpen,
@@ -536,6 +817,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setOrdersOpen,
         getProductById,
         adminAuthenticated,
+        adminEmail,
         adminLoginOpen,
         adminDashboardOpen,
         openAdminEntry,
