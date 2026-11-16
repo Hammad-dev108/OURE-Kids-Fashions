@@ -4,11 +4,13 @@ import {
   Banknote,
   CheckCircle2,
   CreditCard,
+  MessageCircle,
   ShieldCheck,
   Truck,
   X,
 } from 'lucide-react';
 import { formatPrice } from '../data/products';
+import { buildOrderWhatsAppUrl } from '../config/storeConfig';
 import { useStore } from '../context/StoreContext';
 import type {
   DeliveryDetails,
@@ -561,13 +563,25 @@ export function CheckoutModal() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleClose}
-                className="w-full rounded-lg bg-[#C8963E] py-3 text-sm font-semibold text-[#FFFFFF] transition-colors hover:bg-[#E0AF50] hover:text-[#2C221E]"
-              >
-                Continue Shopping
-              </button>
+              <div className="space-y-2.5">
+                <a
+                  href={buildOrderWhatsAppUrl(receipt)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2C221E] py-3 text-sm font-semibold text-[#FAF6F0] transition-colors hover:bg-[#C8963E] hover:text-[#FFFFFF]"
+                >
+                  <MessageCircle className="h-4 w-4 text-[#C8963E]" />
+                  <span>Confirm Order via WhatsApp</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="w-full rounded-lg border border-[#E8DFD1] bg-[#FAF6F0] py-3 text-sm font-semibold text-[#2C221E] transition-colors hover:border-[#C8963E] hover:bg-[#F4E4D8]"
+                >
+                  Continue Shopping
+                </button>
+              </div>
               <div className="h-16 sm:h-4 shrink-0" aria-hidden="true" />
             </div>
           )}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Check,
   Heart,
+  MessageCircle,
   Minus,
   Plus,
   Ruler,
@@ -9,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { formatPrice } from '../data/products';
+import { buildProductWhatsAppUrl } from '../config/storeConfig';
 import { useStore } from '../context/StoreContext';
 import type { Product } from '../types/store';
 import { BoutiqueImage } from './BoutiqueImage';
@@ -234,6 +236,22 @@ export function ProductDetailModal({
                 <Heart className="h-4.5 w-4.5" fill={wishlisted ? 'currentColor' : 'none'} />
               </button>
             </div>
+
+            <a
+              href={buildProductWhatsAppUrl({
+                productName: product.name,
+                size: selectedSize,
+                pricePkr: product.pricePkr,
+                currency,
+              })}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-[#C8963E] bg-[#FFFFFF] px-5 text-sm font-semibold text-[#2C221E] transition-colors hover:bg-[#F4E4D8]"
+            >
+              <MessageCircle className="h-4 w-4 text-[#C8963E]" />
+              <span>Ask / Order via WhatsApp</span>
+            </a>
+
             <div className="h-24 sm:h-8 shrink-0" aria-hidden="true" />
           </div>
         </div>

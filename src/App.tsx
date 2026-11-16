@@ -4,6 +4,7 @@ import {
   Gift,
   Heart,
   Leaf,
+  MessageCircle,
   Ruler,
   ShieldCheck,
   Sparkles,
@@ -12,6 +13,11 @@ import {
   AGE_BRACKETS,
   PRODUCT_CATEGORIES,
 } from './data/products';
+import {
+  STORE_WHATSAPP_DISPLAY,
+  WHATSAPP_DEFAULT_INQUIRY,
+  buildWhatsAppUrl,
+} from './config/storeConfig';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { Navbar, type NavPreset } from './components/Navbar';
 import { HeroBoutique3D } from './components/HeroBoutique3D';
@@ -23,6 +29,7 @@ import { CheckoutModal } from './components/CheckoutModal';
 import { OrdersModal } from './components/OrdersModal';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { AdminDashboardModal } from './components/AdminDashboardModal';
+import { WhatsAppFloatingButton } from './components/WhatsAppFloatingButton';
 import type { AgeBracket, Product, ProductCategory } from './types/store';
 
 function BoutiqueStorefront() {
@@ -423,6 +430,15 @@ function BoutiqueStorefront() {
           </div>
 
           <div className="flex flex-wrap items-center gap-5 text-xs text-[#6E5D54]">
+            <a
+              href={buildWhatsAppUrl(WHATSAPP_DEFAULT_INQUIRY)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 font-medium text-[#2C221E] hover:text-[#C8963E]"
+            >
+              <MessageCircle className="h-3.5 w-3.5 text-[#C8963E]" />
+              <span>WhatsApp: {STORE_WHATSAPP_DISPLAY}</span>
+            </a>
             <button
               type="button"
               onClick={() => setSizeGuideOpen(true)}
@@ -447,6 +463,9 @@ function BoutiqueStorefront() {
           </div>
         </div>
       </footer>
+
+      {/* Floating WhatsApp Concierge */}
+      <WhatsAppFloatingButton />
 
       {/* Interactive Modals & Drawers */}
       <ProductDetailModal
